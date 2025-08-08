@@ -1,0 +1,129 @@
+#
+# Copyright 2025-2026 the original author or authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+server:
+  port: 18081  # Different port from original to avoid conflicts
+
+spring:
+  application:
+    name: spring-ai-alibaba-graph-reactive-example
+  
+  # WebFlux configuration
+  webflux:
+    # Enable reactive web support
+    base-path: /
+    # Configure static resources
+    static-path-pattern: /static/**
+    
+  # Reactor Netty configuration
+  reactor:
+    netty:
+      # Connection pool configuration
+      pool:
+        max-connections: 500
+        max-idle-time: 30s
+        max-life-time: 60s
+      # Event loop configuration
+      event-loop:
+        select-count: 4
+        worker-count: 8
+
+  # AI Configuration
+  ai:
+    # DashScope configuration (Alibaba Cloud)
+    dashscope:
+      api-key: sk-c89068d244624ef8b8f0464404debeb3
+      
+    # OpenAI configuration (compatible mode)
+    openai:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key:  sk-c89068d244624ef8b8f0464404debeb3
+      chat:
+        options:
+          model: qwen-max
+          temperature: 0.7
+          max-tokens: 1000
+      embedding:
+        options:
+          model: text-embedding-v1
+
+# Logging configuration
+logging:
+  level:
+    com.alibaba.cloud.ai: DEBUG
+    reactor.netty: INFO
+    org.springframework.web.reactive: DEBUG
+    org.springframework.ai: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%logger{36}] - %msg%n"
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+    metrics:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Reactive specific configuration
+reactive:
+  graph:
+    # Maximum execution time for a single workflow
+    max-execution-time: 30s
+    # Buffer size for streaming responses
+    buffer-size: 1000
+    # Backpressure strategy
+    backpressure-strategy: BUFFER
+
+---
+# Development profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+  
+logging:
+  level:
+    root: INFO
+    com.alibaba.cloud.ai: DEBUG
+    reactor: DEBUG
+
+---
+# Production profile  
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  level:
+    root: WARN
+    com.alibaba.cloud.ai: INFO
+
+reactive:
+  graph:
+    max-execution-time: 60s
+    buffer-size: 2000
