@@ -18,7 +18,6 @@ package com.alibaba.cloud.ai.graph.reactive;
 import com.alibaba.cloud.ai.graph.KeyStrategy;
 import com.alibaba.cloud.ai.graph.reactive.action.ReactiveEdgeAction;
 import com.alibaba.cloud.ai.graph.reactive.action.ReactiveNodeAction;
-import com.alibaba.cloud.ai.graph.reactive.action.EnhancedReactiveNodeAction;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -40,7 +39,6 @@ public class ReactiveStateGraph {
     private final String name;
     private final Supplier<Map<String, KeyStrategy>> stateFactory;
     private final Map<String, ReactiveNodeAction> nodes = new ConcurrentHashMap<>();
-    private final Map<String, EnhancedReactiveNodeAction> enhancedNodes = new ConcurrentHashMap<>();
     private final Map<String, String> edges = new ConcurrentHashMap<>();
     private final Map<String, Map<String, String>> conditionalEdges = new ConcurrentHashMap<>();
     private final Map<String, ReactiveEdgeAction> edgeActions = new ConcurrentHashMap<>();
@@ -58,20 +56,6 @@ public class ReactiveStateGraph {
      * @return this graph for method chaining
      */
     public ReactiveStateGraph addNode(String nodeName, ReactiveNodeAction action) {
-        nodes.put(nodeName, action);
-        return this;
-    }
-
-    /**
-     * Add an enhanced node to the graph.
-     *
-     * @param nodeName the name of the node
-     * @param action the enhanced reactive action to execute
-     * @return this graph for method chaining
-     */
-    public ReactiveStateGraph addEnhancedNode(String nodeName, EnhancedReactiveNodeAction action) {
-        enhancedNodes.put(nodeName, action);
-        // Also add to regular nodes for backward compatibility
         nodes.put(nodeName, action);
         return this;
     }
@@ -123,10 +107,6 @@ public class ReactiveStateGraph {
 
     public Map<String, ReactiveNodeAction> getNodes() {
         return nodes;
-    }
-
-    public Map<String, EnhancedReactiveNodeAction> getEnhancedNodes() {
-        return enhancedNodes;
     }
 
     public Map<String, String> getEdges() {

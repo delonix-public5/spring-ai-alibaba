@@ -18,16 +18,11 @@ package com.alibaba.cloud.ai.graph.reactive;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.reactive.action.ReactiveEdgeAction;
 import com.alibaba.cloud.ai.graph.reactive.action.ReactiveNodeAction;
-import com.alibaba.cloud.ai.graph.reactive.action.EnhancedReactiveNodeAction;
-import com.alibaba.cloud.ai.graph.reactive.context.ReactiveNodeExecutionContext;
-import com.alibaba.cloud.ai.graph.reactive.model.ReactiveNodeInput;
-import com.alibaba.cloud.ai.graph.reactive.model.ReactiveNodeOutput;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -42,11 +37,9 @@ public class ReactiveCompiledGraph {
 
     private final ReactiveStateGraph graph;
     private int maxIterations = 100;
-    private final ReactiveNodeExecutionContext executionContext;
 
     public ReactiveCompiledGraph(ReactiveStateGraph graph) {
         this.graph = graph;
-        this.executionContext = new ReactiveNodeExecutionContext();
     }
 
     /**
@@ -56,22 +49,6 @@ public class ReactiveCompiledGraph {
      */
     public void setMaxIterations(int maxIterations) {
         this.maxIterations = maxIterations;
-    }
-
-    /**
-     * Get the execution context.
-     *
-     * @return the execution context
-     */
-    public ReactiveNodeExecutionContext getExecutionContext() {
-        return executionContext;
-    }
-
-    /**
-     * Clear the execution context.
-     */
-    public void clearExecutionContext() {
-        executionContext.clear();
     }
 
     /**
@@ -130,49 +107,24 @@ public class ReactiveCompiledGraph {
             return Mono.just(state);
         }
 
-        if (ReactiveStateGraph.START.equals(currentNode)) {
-            return getNextNode(currentNode, state)
-                    .flatMap(nextNode -> executeNode(nextNode, state, iteration + 1));
-        }
-
-        // Check if this is an enhanced node
-        EnhancedReactiveNodeAction enhancedAction = graph.getEnhancedNodes().get(currentNode);
-        if (enhancedAction != null) {
-            return executeEnhancedNode(currentNode, enhancedAction, state, iteration);
-        }
-
-        // Fall back to regular node execution
         ReactiveNodeAction nodeAction = graph.getNodes().get(currentNode);
-        if (nodeAction == null) {
+        if (nodeAction == null && !ReactiveStateGraph.START.equals(currentNode)) {
             return Mono.error(new RuntimeException("Node not found: " + currentNode));
         }
 
-        return nodeAction.apply(state)
-                .map(updates -> {
-                    state.updateState(updates);
-                    return state;
-                })
+        Mono<OverAllState> nodeExecution;
+        if (ReactiveStateGraph.START.equals(currentNode)) {
+            nodeExecution = Mono.just(state);
+        } else {
+            nodeExecution = nodeAction.apply(state)
+                    .map(updates -> {
+                        state.updateState(updates);
+                        return state;
+                    });
+        }
+
+        return nodeExecution
                 .flatMap(updatedState -> getNextNode(currentNode, updatedState))
-                .flatMap(nextNode -> executeNode(nextNode, state, iteration + 1));
-    }
-
-    private Mono<OverAllState> executeEnhancedNode(String nodeId, EnhancedReactiveNodeAction action,
-                                                  OverAllState state, int iteration) {
-        // Create node input with current state and execution history
-        Map<String, Object> directInputs = new HashMap<>(state.data());
-        ReactiveNodeInput nodeInput = executionContext.createNodeInput(nodeId, directInputs);
-
-        return action.applyEnhanced(state, nodeInput)
-                .doOnNext(nodeOutput -> {
-                    // Record the execution in context
-                    executionContext.recordNodeExecution(nodeId, nodeInput, nodeOutput);
-                })
-                .map(nodeOutput -> {
-                    // Apply state updates
-                    state.updateState(nodeOutput.getStateUpdates());
-                    return state;
-                })
-                .flatMap(updatedState -> getNextNode(nodeId, updatedState))
                 .flatMap(nextNode -> executeNode(nextNode, state, iteration + 1));
     }
 
@@ -185,60 +137,27 @@ public class ReactiveCompiledGraph {
             return Flux.just(state);
         }
 
-        if (ReactiveStateGraph.START.equals(currentNode)) {
-            return getNextNode(currentNode, state)
-                    .flatMapMany(nextNode -> streamNode(nextNode, state, iteration + 1));
-        }
-
-        // Check if this is an enhanced node
-        EnhancedReactiveNodeAction enhancedAction = graph.getEnhancedNodes().get(currentNode);
-        if (enhancedAction != null) {
-            return streamEnhancedNode(currentNode, enhancedAction, state, iteration);
-        }
-
-        // Fall back to regular node execution
         ReactiveNodeAction nodeAction = graph.getNodes().get(currentNode);
-        if (nodeAction == null) {
+        if (nodeAction == null && !ReactiveStateGraph.START.equals(currentNode)) {
             return Flux.error(new RuntimeException("Node not found: " + currentNode));
         }
 
-        Mono<OverAllState> nodeExecution = nodeAction.apply(state)
-                .map(updates -> {
-                    state.updateState(updates);
-                    return state;
-                });
+        Mono<OverAllState> nodeExecution;
+        if (ReactiveStateGraph.START.equals(currentNode)) {
+            nodeExecution = Mono.just(state);
+        } else {
+            nodeExecution = nodeAction.apply(state)
+                    .map(updates -> {
+                        state.updateState(updates);
+                        return state;
+                    });
+        }
 
         return nodeExecution
                 .flux()
                 .concatWith(
                         nodeExecution
                                 .flatMap(updatedState -> getNextNode(currentNode, updatedState))
-                                .flatMapMany(nextNode -> streamNode(nextNode, state, iteration + 1))
-                );
-    }
-
-    private Flux<OverAllState> streamEnhancedNode(String nodeId, EnhancedReactiveNodeAction action,
-                                                 OverAllState state, int iteration) {
-        // Create node input with current state and execution history
-        Map<String, Object> directInputs = new HashMap<>(state.data());
-        ReactiveNodeInput nodeInput = executionContext.createNodeInput(nodeId, directInputs);
-
-        Mono<OverAllState> nodeExecution = action.applyEnhanced(state, nodeInput)
-                .doOnNext(nodeOutput -> {
-                    // Record the execution in context
-                    executionContext.recordNodeExecution(nodeId, nodeInput, nodeOutput);
-                })
-                .map(nodeOutput -> {
-                    // Apply state updates
-                    state.updateState(nodeOutput.getStateUpdates());
-                    return state;
-                });
-
-        return nodeExecution
-                .flux()
-                .concatWith(
-                        nodeExecution
-                                .flatMap(updatedState -> getNextNode(nodeId, updatedState))
                                 .flatMapMany(nextNode -> streamNode(nextNode, state, iteration + 1))
                 );
     }
